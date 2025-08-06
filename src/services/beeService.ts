@@ -167,9 +167,12 @@ export const getOrderById = async (orderId: string): Promise<CustomerOrder | nul
 };
 
 export const addOrder = async (orderData: Omit<CustomerOrder, 'id' | 'larvaeTransferDate' | 'status' | 'createdAt'>): Promise<CustomerOrder> => {
-  const res = await fetch(`${API_BASE_URL}/orders`, {
+  const res = await fetch(`${API_BASE_URL}/orders/`, {  // agregué slash al final
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(orderData),
   });
   if (!res.ok) throw new Error('Failed to add order');
@@ -181,6 +184,7 @@ export const addOrder = async (orderData: Omit<CustomerOrder, 'id' | 'larvaeTran
     createdAt: new Date(newOrder.createdAt),
   };
 };
+
 
 export const updateOrderStatus = async (orderId: string, status: CustomerOrder['status']): Promise<void> => {
   const res = await fetch(`${API_BASE_URL}/orders/${orderId}/status`, {
