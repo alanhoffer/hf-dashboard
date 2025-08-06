@@ -1,0 +1,291 @@
+# Queen Cell Management System - Database Schema
+
+## Overview
+This document outlines the database tables, columns, and API endpoints needed to implement the Queen Cell Management System.
+
+## Database Tables
+
+### 1. users
+User authentication and management
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'beekeeper',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 2. customer_orders
+Customer order management
+```sql
+CREATE TABLE customer_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    customer_name VARCHAR(255) NOT NULL,
+    number_of_cells INTEGER NOT NULL CHECK (number_of_cells > 0),
+    delivery_date DATE NOT NULL,
+    larvae_transfer_date DATE NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'in_production', 'ready', 'delivered', 'insufficient', 'partial')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_customer_orders_user_id ON customer_orders(user_id);
+CREATE INDEX idx_customer_orders_status ON customer_orders(status);
+CREATE INDEX idx_customer_orders_delivery_date ON customer_orders(delivery_date);
+```
+
+### 3. production_records
+Production tracking and management
+```sql
+CREATE TABLE production_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    transfer_date DATE NOT NULL,
+    larvae_transferred INTEGER NOT NULL CHECK (larvae_transferred > 0),
+    accepted_cells INTEGER CHECK (accepted_cells >= 0),
+    acceptance_date DATE,
+    cells_produced INTEGER NOT NULL CHECK (cells_produced >= 0),
+    order_id UUID REFERENCES customer_orders(id) ON DELETE SET NULL,
+    notes TEXT,
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'sold', 'expired')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_production_records_user_id ON production_records(user_id);
+CREATE INDEX idx_production_records_order_id ON production_records(order_id);
+CREATE INDEX idx_production_records_transfer_date ON production_records(transfer_date);
+CREATE INDEX idx_production_records_status ON production_records(status);
+```
+
+### 4. production_hives
+Many-to-many relationship for hives used in production
+```sql
+CREATE TABLE production_hives (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    production_id UUID REFERENCES production_records(id) ON DELETE CASCADE,
+    hive_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_production_hives_production_id ON production_hives(production_id);
+```
+
+### 5. stock_packages
+Stock management with expiration tracking
+```sql
+CREATE TABLE stock_packages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    production_id UUID REFERENCES production_records(id) ON DELETE CASCADE,
+    production_date DATE NOT NULL,
+    total_cells INTEGER NOT NULL CHECK (total_cells > 0),
+    available_cells INTEGER NOT NULL CHECK (available_cells >= 0),
+    sold_cells INTEGER DEFAULT 0 CHECK (sold_cells >= 0),
+    expiration_date DATE NOT NULL,
+    is_expired BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_stock_packages_user_id ON stock_packages(user_id);
+CREATE INDEX idx_stock_packages_production_id ON stock_packages(production_id);
+CREATE INDEX idx_stock_packages_expiration_date ON stock_packages(expiration_date);
+CREATE INDEX idx_stock_packages_available_cells ON stock_packages(available_cells);
+```
+
+### 6. stock_package_hives
+Hives associated with stock packages
+```sql
+CREATE TABLE stock_package_hives (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    stock_package_id UUID REFERENCES stock_packages(id) ON DELETE CASCADE,
+    hive_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_stock_package_hives_package_id ON stock_package_hives(stock_package_id);
+```
+
+### 7. stock_sales
+Individual sales from stock packages
+```sql
+CREATE TABLE stock_sales (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    stock_package_id UUID REFERENCES stock_packages(id) ON DELETE CASCADE,
+    customer_name VARCHAR(255) NOT NULL,
+    cells_sold INTEGER NOT NULL CHECK (cells_sold > 0),
+    sale_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_stock_sales_package_id ON stock_sales(stock_package_id);
+CREATE INDEX idx_stock_sales_sale_date ON stock_sales(sale_date);
+```
+
+## API Endpoints
+
+### Authentication
+```
+POST   /api/auth/login
+POST   /api/auth/logout
+POST   /api/auth/register
+GET    /api/auth/me
+```
+
+### Customer Orders
+```
+GET    /api/orders                    # Get all orders for user
+POST   /api/orders                    # Create new order
+GET    /api/orders/:id                # Get specific order
+PUT    /api/orders/:id                # Update order
+DELETE /api/orders/:id                # Delete order
+PUT    /api/orders/:id/status         # Update order status
+```
+
+### Production Records
+```
+GET    /api/productions               # Get all production records
+POST   /api/productions               # Create new production record
+GET    /api/productions/:id           # Get specific production record
+PUT    /api/productions/:id           # Update production record
+DELETE /api/productions/:id           # Delete production record
+PUT    /api/productions/:id/acceptance # Update accepted cells count
+```
+
+### Stock Management
+```
+GET    /api/stock                     # Get available stock packages
+GET    /api/stock/all                 # Get all stock packages (including sold/expired)
+POST   /api/stock/:id/sell            # Sell cells from stock package
+GET    /api/stock/:id/sales           # Get sales history for package
+```
+
+### Dashboard & Analytics
+```
+GET    /api/dashboard/stats           # Get dashboard statistics
+GET    /api/dashboard/upcoming        # Get upcoming transfers
+GET    /api/dashboard/expiring        # Get expiring stock
+```
+
+### Reports & History
+```
+GET    /api/reports/orders            # Get order history with filters
+GET    /api/reports/productions       # Get production history with filters
+GET    /api/reports/export/csv        # Export data as CSV
+GET    /api/reports/export/pdf        # Export data as PDF
+```
+
+## Database Triggers & Functions
+
+### Auto-update timestamps
+```sql
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Apply to all tables with updated_at
+CREATE TRIGGER update_customer_orders_updated_at BEFORE UPDATE ON customer_orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_production_records_updated_at BEFORE UPDATE ON production_records FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_stock_packages_updated_at BEFORE UPDATE ON stock_packages FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+### Auto-expire stock packages
+```sql
+CREATE OR REPLACE FUNCTION check_expired_stock()
+RETURNS void AS $$
+BEGIN
+    UPDATE stock_packages 
+    SET is_expired = TRUE, available_cells = 0
+    WHERE expiration_date < CURRENT_DATE 
+    AND is_expired = FALSE 
+    AND available_cells > 0;
+    
+    -- Update related production status
+    UPDATE production_records 
+    SET status = 'expired'
+    WHERE id IN (
+        SELECT production_id 
+        FROM stock_packages 
+        WHERE is_expired = TRUE 
+        AND status = 'active'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Run daily
+SELECT cron.schedule('expire-stock', '0 0 * * *', 'SELECT check_expired_stock();');
+```
+
+## Environment Variables
+
+```env
+# Database
+DATABASE_URL=postgresql://username:password@localhost:5432/queencell_db
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=queencell_db
+DB_USER=username
+DB_PASSWORD=password
+
+# Authentication
+JWT_SECRET=your-super-secret-jwt-key
+JWT_EXPIRES_IN=7d
+BCRYPT_ROUNDS=12
+
+# Application
+NODE_ENV=production
+PORT=3000
+CORS_ORIGIN=https://yourdomain.com
+
+# Email (optional for notifications)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+```
+
+## Sample Data Seeding
+
+```sql
+-- Insert sample user
+INSERT INTO users (email, password_hash, name) VALUES 
+('beekeeper@example.com', '$2b$12$hashedpassword', 'John Beekeeper');
+
+-- Insert sample orders
+INSERT INTO customer_orders (user_id, customer_name, number_of_cells, delivery_date, larvae_transfer_date) VALUES 
+((SELECT id FROM users WHERE email = 'beekeeper@example.com'), 'João Silva', 10, '2024-02-15', '2024-02-05'),
+((SELECT id FROM users WHERE email = 'beekeeper@example.com'), 'Maria Santos', 5, '2024-02-20', '2024-02-10');
+```
+
+## Performance Considerations
+
+1. **Indexing**: All foreign keys and frequently queried columns are indexed
+2. **Partitioning**: Consider partitioning large tables by date for better performance
+3. **Archiving**: Implement data archiving for old records (>2 years)
+4. **Caching**: Use Redis for frequently accessed dashboard statistics
+5. **Connection Pooling**: Implement connection pooling for database connections
+
+## Security Considerations
+
+1. **Row Level Security (RLS)**: Enable RLS to ensure users only see their own data
+2. **Input Validation**: Validate all inputs on both client and server side
+3. **SQL Injection**: Use parameterized queries exclusively
+4. **Authentication**: Implement proper JWT token validation
+5. **Rate Limiting**: Add rate limiting to prevent abuse
+
+## Backup Strategy
+
+1. **Daily Backups**: Automated daily database backups
+2. **Point-in-time Recovery**: Enable WAL archiving for point-in-time recovery
+3. **Cross-region Replication**: Set up read replicas in different regions
+4. **Backup Testing**: Regular backup restoration testing
