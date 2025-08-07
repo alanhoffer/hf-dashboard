@@ -47,38 +47,52 @@ export interface StockSale {
 
 // In-memory data stores
 let orders: CustomerOrder[] = [
-
+  // ...
 ];
 
 let productions: ProductionRecord[] = [
+  // ...
 ];
 
 let stockPackages: StockPackage[] = [];
 
-function toSnakeCase(obj: any): any {
-  const result: any = {};
+// Helper functions for case conversion
+function toSnakeCase(obj) {
+  const result = {};
   for (const key in obj) {
-    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-    result[snakeKey] = obj[key];
-  }
-  return result;
-}
-function toCamelCase(obj: any): any {
-  const result: any = {};
-  for (const key in obj) {
-    const camelKey = key.replace(/(_\w)/g, (match) => match[1].toUpperCase());
-    result[camelKey] = obj[key];
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const snakeKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+      result[snakeKey] = obj[key];
+    }
   }
   return result;
 }
 
+function toCamelCase(obj) {
+  if (obj === null || typeof obj !== 'object' || obj instanceof Date) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => toCamelCase(item));
+  }
+
+  const result = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const camelKey = key.replace(/(_\w)/g, (match) => match[1].toUpperCase());
+      result[camelKey] = toCamelCase(obj[key]);
+    }
+  }
+  return result;
+}
 
 // Helper function to get auth headers with token from localStorage
 const getAuthHeaders = () => {
   const token = localStorage.getItem('auth_token');
   if (!token) throw new Error('No auth token found');
   return {
-    'Authorization': `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
 };
@@ -87,13 +101,12 @@ const getAuthHeaders = () => {
 const updateExpiredStock = () => {
   const now = new Date();
 
-  stockPackages.forEach(pkg => {
+  stockPackages.forEach((pkg) => {
     if (!pkg.isExpired && isAfter(now, pkg.expirationDate) && pkg.availableCells > 0) {
       pkg.isExpired = true;
       pkg.availableCells = 0;
 
-      // Update related production status
-      const productionIndex = productions.findIndex(p => p.id === pkg.productionId);
+      const productionIndex = productions.findIndex((p) => p.id === pkg.productionId);
       if (productionIndex !== -1) {
         productions[productionIndex].status = 'expired';
       }
@@ -103,174 +116,200 @@ const updateExpiredStock = () => {
   });
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://localhost:8000/api';
 
 // Helper function to check if production should be marked as sold
-const checkProductionSoldStatus = (productionId: string) => {
-  const production = productions.find(p => p.id === productionId);
-  const stockPackage = stockPackages.find(s => s.productionId === productionId);
+const checkProductionSoldStatus = (productionId) => {
+  const production = productions.find((p) => p.id === productionId);
+  const stockPackage = stockPackages.find((s) => s.productionId === productionId);
 
   if (production && stockPackage) {
-    const relatedOrder = orders.find(o => o.id === production.orderId);
+    const relatedOrder = orders.find((o) => o.id === production.orderId);
     const orderCells = relatedOrder ? relatedOrder.numberOfCells : 0;
     const totalSold = stockPackage.soldCells;
     const totalProduced = production.cellsProduced;
 
-    // If all cells (order + extra) are sold, mark production as sold
-    if (totalSold >= (totalProduced - orderCells) && stockPackage.availableCells === 0) {
+    if (totalSold >= totalProduced - orderCells && stockPackage.availableCells === 0) {
       production.status = 'sold';
       console.log('Production marked as sold:', production);
     }
   }
 };
 
-// Order management
-export const getOrders = async (): Promise<CustomerOrder[]> => {
+// --- Order management ---
+export const getOrders = async () => {
   const res = await fetch(`${API_BASE_URL}/order`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch orders');
   const data = await res.json();
-  return data.map((order: any) => ({
-    id: order.id,
-    status: order.status,
-    customerName: order.customer_name,
-    numberOfCells: order.number_of_cells,
-    deliveryDate: new Date(order.delivery_date),
-    larvaeTransferDate: new Date(order.larvae_transfer_date),
-    createdAt: new Date(order.created_at),
-  }));
+  const camelCaseData = toCamelCase(data);
+  return camelCaseData.map((order) => {
+    order.deliveryDate = new Date(order.deliveryDate);
+    order.larvaeTransferDate = new Date(order.larvaeTransferDate);
+    order.createdAt = new Date(order.createdAt);
+    return order;
+  });
 };
 
-export const getOrderById = async (orderId: string): Promise<CustomerOrder | null> => {
-  const res = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+export const getOrderById = async (orderId) => {
+  const res = await fetch(`${API_BASE_URL}/order/${orderId}`, {
     headers: getAuthHeaders(),
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Failed to fetch order');
   const order = await res.json();
-  return {
-    id: order.id,
-    status: order.status,
-    customerName: order.customer_name,
-    numberOfCells: order.number_of_cells,
-    deliveryDate: new Date(order.delivery_date),
-    larvaeTransferDate: new Date(order.larvae_transfer_date),
-    createdAt: new Date(order.created_at),
-  };
+  const camelCaseOrder = toCamelCase(order);
+  camelCaseOrder.deliveryDate = new Date(camelCaseOrder.deliveryDate);
+  camelCaseOrder.larvaeTransferDate = new Date(camelCaseOrder.larvaeTransferDate);
+  camelCaseOrder.createdAt = new Date(camelCaseOrder.createdAt);
+  return camelCaseOrder;
 };
 
-export const addOrder = async (orderData: Omit<CustomerOrder, 'id' | 'status' | 'createdAt'>): Promise<CustomerOrder> => {
-  console.log('deliveryDate raw:', orderData.deliveryDate);
-console.log('larvaeTransferDate raw:', orderData.larvaeTransferDate);
-
-  const payloadCamel = {
-    ...orderData,
-    deliveryDate: new Date(orderData.deliveryDate).toISOString().split('T')[0],
-    larvaeTransferDate: new Date(orderData.larvaeTransferDate).toISOString().split('T')[0],
-  };
+export const addOrder = async (orderData) => {
+  const payloadCamel = Object.assign({}, orderData);
+  payloadCamel.deliveryDate = new Date(orderData.deliveryDate).toISOString().split('T')[0];
+  payloadCamel.larvaeTransferDate = new Date(orderData.larvaeTransferDate).toISOString().split('T')[0];
 
   console.log('Adding order:', payloadCamel);
   const payload = toSnakeCase(payloadCamel);
 
-  const res = await fetch(`${API_BASE_URL}/order/`, {  // agregué slash al final
+  const headers = getAuthHeaders();
+  const res = await fetch(`${API_BASE_URL}/order/`, {
     method: 'POST',
-    headers: {
-      ...getAuthHeaders(),
-      'Content-Type': 'application/json',
-    },
+    headers: headers,
     body: JSON.stringify(payload),
   });
 
   if (!res.ok) throw new Error('Failed to add order');
   const newOrder = await res.json();
-  console.log(newOrder)
-  return {
-    ...newOrder,
-    deliveryDate: new Date(newOrder.deliveryDate),
-    larvaeTransferDate: new Date(newOrder.larvaeTransferDate),
-    createdAt: new Date(newOrder.createdAt),
-  };
+
+  const camelCaseNewOrder = toCamelCase(newOrder);
+  camelCaseNewOrder.deliveryDate = new Date(camelCaseNewOrder.deliveryDate);
+  camelCaseNewOrder.larvaeTransferDate = new Date(camelCaseNewOrder.larvaeTransferDate);
+  camelCaseNewOrder.createdAt = new Date(camelCaseNewOrder.createdAt);
+
+  return camelCaseNewOrder;
 };
 
-
-export const updateOrderStatus = async (orderId: string, status: CustomerOrder['status']): Promise<void> => {
+export const updateOrderStatus = async (orderId, status) => {
   const res = await fetch(`${API_BASE_URL}/orders/${orderId}/status`, {
     method: 'PATCH',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(toSnakeCase({ status })),
   });
   if (!res.ok) throw new Error('Failed to update order status');
 };
 
-export const getProductions = async (): Promise<ProductionRecord[]> => {
+// --- Production management ---
+export const getProductions = async () => {
   const res = await fetch(`${API_BASE_URL}/productions`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch productions');
   const data = await res.json();
-  return data.map((p: any) => ({
-    ...p,
-    transferDate: new Date(p.transferDate),
-    acceptanceDate: p.acceptanceDate ? new Date(p.acceptanceDate) : undefined,
-    createdAt: new Date(p.createdAt),
-  }));
+
+  console.log("data", data)
+  const camelCaseData = toCamelCase(data);
+  return camelCaseData.map((p) => {
+    p.transferDate = new Date(p.transferDate);
+    p.acceptanceDate = p.acceptanceDate ? new Date(p.acceptanceDate) : undefined;
+    p.createdAt = new Date(p.createdAt);
+    return p;
+  });
 };
 
-export const addProduction = async (productionData: Omit<ProductionRecord, 'id' | 'createdAt' | 'status'>): Promise<ProductionRecord> => {
+export const addProduction = async (productionData) => {
+  console.log("addingf", productionData);
+
+  const payloadCamel = { ...productionData };
+
+  // ✅ Formatear fechas a YYYY-MM-DD
+  payloadCamel.transferDate = new Date(productionData.transferDate).toISOString().split('T')[0];
+
+  if (productionData.acceptanceDate) {
+    payloadCamel.acceptanceDate = new Date(productionData.acceptanceDate).toISOString().split('T')[0];
+  }
+
+  // ✅ Convertir hivesUsed (array de strings) a hives (array de objetos con hiveName)
+  if (productionData.hives && Array.isArray(productionData.hives)) {
+    payloadCamel.hives = productionData.hives.map(name => ({ hiveName: name }));
+  }
+
+  // ✅ Eliminar hivesUsed ya que no lo espera el backend
+  delete payloadCamel.hives;
+
+  console.log('Adding production:', payloadCamel);
+
+  // ✅ Convertir todo a snake_case
+  const payload = toSnakeCase(payloadCamel);
+
+  // ✅ Enviar al backend
   const res = await fetch(`${API_BASE_URL}/productions`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify(productionData),
+    body: JSON.stringify(payload),
   });
+
   if (!res.ok) throw new Error('Failed to add production');
+
   const newProduction = await res.json();
-  return {
-    ...newProduction,
-    transferDate: new Date(newProduction.transferDate),
-    acceptanceDate: newProduction.acceptanceDate ? new Date(newProduction.acceptanceDate) : undefined,
-    createdAt: new Date(newProduction.createdAt),
-  };
+
+  // ✅ Convertir respuesta a camelCase y parsear fechas
+  const camelCaseNewProduction = toCamelCase(newProduction);
+  camelCaseNewProduction.transferDate = new Date(camelCaseNewProduction.transferDate);
+  camelCaseNewProduction.acceptanceDate = camelCaseNewProduction.acceptanceDate
+    ? new Date(camelCaseNewProduction.acceptanceDate)
+    : undefined;
+  camelCaseNewProduction.createdAt = new Date(camelCaseNewProduction.createdAt);
+
+  return camelCaseNewProduction;
 };
 
-export const updateAcceptedCells = async (productionId: string, acceptedCells: number): Promise<void> => {
+
+export const updateAcceptedCells = async (productionId, acceptedCells) => {
   const res = await fetch(`${API_BASE_URL}/productions/${productionId}/acceptance`, {
     method: 'PATCH',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ accepted_cells: acceptedCells }),
+    body: JSON.stringify(toSnakeCase({ acceptedCells })),
   });
   if (!res.ok) throw new Error('Failed to update accepted cells');
 };
 
-export const getAvailableStock = async (): Promise<StockPackage[]> => {
+// --- Stock management ---
+export const getAvailableStock = async () => {
   const res = await fetch(`${API_BASE_URL}/stock`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch stock');
   const data = await res.json();
-  return data.map((pkg: any) => ({
-    ...pkg,
-    productionDate: new Date(pkg.productionDate),
-    expirationDate: new Date(pkg.expirationDate),
-    createdAt: new Date(pkg.createdAt),
-    sales: pkg.sales.map((sale: any) => ({
-      ...sale,
-      saleDate: new Date(sale.saleDate),
-    })),
-  }));
+  console.log(data);
+  const camelCaseData = toCamelCase(data);
+  return camelCaseData.map((pkg) => {
+    pkg.productionDate = new Date(pkg.productionDate);
+    pkg.expirationDate = new Date(pkg.expirationDate);
+    pkg.createdAt = new Date(pkg.createdAt);
+    pkg.sales = pkg.sales.map((sale) => {
+      sale.saleDate = new Date(sale.saleDate);
+      return sale;
+    });
+    return pkg;
+  });
 };
 
-export const sellStockCells = async (packageId: string, customerName: string, cellsToSell: number): Promise<void> => {
+export const sellStockCells = async (packageId, customerName, cellsToSell) => {
+  const payload = toSnakeCase({ packageId, customerName, cellsToSell });
   const res = await fetch(`${API_BASE_URL}/stock/sell`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ package_id: packageId, customer_name: customerName, cells_to_sell: cellsToSell }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Failed to sell stock cells');
 };
 
 export const getDashboardStats = async () => {
   const headers = getAuthHeaders();
+  console.log("upcoming", "asd")
 
   const [statsRes, upcomingRes, expiringRes] = await Promise.all([
     fetch(`${API_BASE_URL}/dashboard/stats`, { headers }),
@@ -287,51 +326,62 @@ export const getDashboardStats = async () => {
     upcomingRes.json(),
     expiringRes.json(),
   ]);
+  const camelCaseStats = toCamelCase(stats);
+  const camelCaseUpcoming = toCamelCase(upcomingTransfers);
+  const camelCaseExpiring = toCamelCase(expiringStock);
 
-  const parsedUpcomingTransfers = upcomingTransfers.map((o: any) => ({
-    ...o,
-    deliveryDate: new Date(o.deliveryDate),
-    larvaeTransferDate: new Date(o.larvaeTransferDate),
-  }));
 
-  const parsedExpiringStock = expiringStock.map((pkg: any) => ({
-    ...pkg,
-    productionDate: new Date(pkg.productionDate),
-    expirationDate: new Date(pkg.expirationDate),
-    createdAt: new Date(pkg.createdAt),
-    sales: pkg.sales.map((sale: any) => ({
-      ...sale,
-      saleDate: new Date(sale.saleDate),
-    })),
-  }));
+  const parsedUpcomingTransfers = camelCaseUpcoming.map((o) => {
+    o.deliveryDate = new Date(o.deliveryDate);
+    o.larvaeTransferDate = new Date(o.deliveryDate);
+    return o;
+  });
+
+  const parsedExpiringStock = camelCaseExpiring.map((pkg) => {
+    pkg.productionDate = new Date(pkg.productionDate);
+    pkg.expirationDate = new Date(pkg.expirationDate);
+    pkg.createdAt = new Date(pkg.createdAt);
+    pkg.sales = pkg.sales.map((sale) => {
+      sale.saleDate = new Date(sale.saleDate);
+      return sale;
+    });
+    return pkg;
+  });
 
   return {
-    ...stats,
+    pendingOrders: camelCaseStats.pendingOrders,
+    totalAvailableCells: camelCaseStats.totalAvailableCells,
+    totalSalesLast30Days: camelCaseStats.totalSalesLast30Days,
     upcomingTransfers: parsedUpcomingTransfers,
     expiringStock: parsedExpiringStock,
   };
 };
 
-export const getAllStock = async (): Promise<StockPackage[]> => {
+export const getAllStock = async () => {
+  console.log('asdasd');
+
   const res = await fetch(`${API_BASE_URL}/stock/all`, {
     headers: getAuthHeaders(),
   });
+
   if (!res.ok) throw new Error('Failed to fetch all stock');
   const data = await res.json();
+  console.log('2asdasd', data);
 
-  // Actualizar expirados localmente
   updateExpiredStock();
 
-  return data
-    .map((pkg: any) => ({
-      ...pkg,
-      productionDate: new Date(pkg.productionDate),
-      expirationDate: new Date(pkg.expirationDate),
-      createdAt: new Date(pkg.createdAt),
-      sales: pkg.sales.map((sale: any) => ({
-        ...sale,
-        saleDate: new Date(sale.saleDate),
-      })),
-    }))
+  const camelCaseData = toCamelCase(data);
+
+  return camelCaseData
+    .map((pkg) => {
+      pkg.productionDate = new Date(pkg.productionDate);
+      pkg.expirationDate = new Date(pkg.expirationDate);
+      pkg.createdAt = new Date(pkg.createdAt);
+      pkg.sales = pkg.sales.map((sale) => {
+        sale.saleDate = new Date(sale.saleDate);
+        return sale;
+      });
+      return pkg;
+    })
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 };

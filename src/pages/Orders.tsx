@@ -67,11 +67,15 @@ const Orders = () => {
       return;
     }
 
+    const deliveryDate = new Date(formData.deliveryDate);
+    const larvaeTransferDate = new Date(deliveryDate);
+    larvaeTransferDate.setDate(larvaeTransferDate.getDate() - 10);
+
     addOrderMutation.mutate({
       customerName: formData.customerName,
       numberOfCells: parseInt(formData.numberOfCells),
-      deliveryDate: new Date(formData.deliveryDate),
-      larvaeTransferDate: new Date(formData.deliveryDate), // You may want to adjust this logic
+      deliveryDate,
+      larvaeTransferDate,
     });
   };
 

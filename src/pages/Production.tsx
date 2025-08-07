@@ -27,7 +27,7 @@ const Production = () => {
   const [formData, setFormData] = useState({
     transferDate: '',
     larvaeTransferred: '',
-    hivesUsed: '',
+    hives: '',
     cellsProduced: '',
     orderId: prefilledOrderId || '',
     notes: ''
@@ -45,6 +45,8 @@ const Production = () => {
     queryKey: ['orders'],
     queryFn: getOrders,
   });
+
+  console.log(productions)
 
   const { data: prefilledOrder } = useQuery({
     queryKey: ['order', prefilledOrderId],
@@ -75,7 +77,7 @@ const Production = () => {
         title: t('production.productionAdded'),
         description: t('production.productionAddedDesc'),
       });
-      setFormData({ transferDate: '', larvaeTransferred: '', hivesUsed: '', cellsProduced: '', orderId: '', notes: '' });
+      setFormData({ transferDate: '', larvaeTransferred: '', hives: '', cellsProduced: '', orderId: '', notes: '' });
       setShowAddForm(false);
     },
   });
@@ -109,7 +111,7 @@ const Production = () => {
       return;
     }
 
-    const hivesArray = formData.hivesUsed
+    const hivesArray = formData.hives
       .split(',')
       .map(hive => hive.trim())
       .filter(hive => hive.length > 0);
@@ -117,7 +119,7 @@ const Production = () => {
     addProductionMutation.mutate({
       transferDate: new Date(formData.transferDate),
       larvaeTransferred: parseInt(formData.larvaeTransferred),
-      hivesUsed: hivesArray,
+      hives: hivesArray,
       cellsProduced: parseInt(formData.cellsProduced),
       orderId: formData.orderId || undefined,
       notes: formData.notes || undefined,
@@ -288,15 +290,15 @@ const Production = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="hivesUsed" className="text-slate-700">{t('production.hivesUsed')}</Label>
+                      <Label htmlFor="hives" className="text-slate-700">{t('production.hives')}</Label>
                       <Input
-                        id="hivesUsed"
-                        value={formData.hivesUsed}
-                        onChange={(e) => setFormData({ ...formData, hivesUsed: e.target.value })}
-                        placeholder={t('production.hivesUsedPlaceholder')}
+                        id="hives"
+                        value={formData.hives}
+                        onChange={(e) => setFormData({ ...formData, hives: e.target.value })}
+                        placeholder={t('production.hivesPlaceholder')}
                         className="border-slate-200 focus:border-blue-400 focus:ring-blue-400"
                       />
-                      <p className="text-xs text-slate-500 mt-1 hidden sm:block">{t('production.hivesUsedDesc')}</p>
+                      <p className="text-xs text-slate-500 mt-1 hidden sm:block">{t('production.hivesDesc')}</p>
                     </div>
                     <div>
                       <Label htmlFor="orderId" className="text-slate-700">{t('production.relatedOrder')}</Label>
@@ -428,11 +430,11 @@ const Production = () => {
                                 <span className="text-slate-600">{production.cellsProduced} {t('production.cellsProduced')}</span>
                               </div>
 
-                              {production.hivesUsed.length > 0 && (
+                              {production.hives.length > 0 && (
                                 <div className="flex items-center gap-2">
                                   <Factory className="h-4 w-4 text-slate-500" />
                                   <span className="text-slate-600">
-                                    {t('production.hives')} {production.hivesUsed.join(', ')}
+                                    {t('production.hives')} {production.hives.join(', ')}
                                   </span>
                                 </div>
                               )}

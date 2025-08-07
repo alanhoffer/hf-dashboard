@@ -42,7 +42,6 @@ const Dashboard = () => {
       </div>
     );
   }
-
   return (
     <div className="flex flex-col h-full w-full">
       <header className="flex items-center sticky top-0 z-10 gap-4 border-b border-slate-200 bg-white/80 backdrop-blur-sm px-4 sm:px-6 py-4">
@@ -163,10 +162,10 @@ const Dashboard = () => {
                         <div className="text-right mt-2 sm:mt-0">
                           <Badge variant="outline" className="border-red-200 text-red-700 bg-red-50">
                             <Calendar className="w-3 h-3 mr-1" />
-                            {format(order.larvaeTransferDate, 'MMM dd')}
+                            {format(order.larvaeTransferDate, 'MMM dd yyyy')}
                           </Badge>
                           <p className="text-xs text-slate-500 mt-1">
-                            {t('dashboard.delivery')} {format(order.deliveryDate, 'MMM dd')}
+                            {t('dashboard.delivery')} {format(order.deliveryDate, 'MMM dd yyyy')}
                           </p>
                         </div>
                       </div>
