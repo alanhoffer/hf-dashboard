@@ -8,6 +8,9 @@ export default defineConfig({
   server: {
     allowedHosts: [
       'apitoolbackend.ddns.net',
+      'xn--cabaahoffer-4db.com.ar',
+      'www.xn--cabaahoffer-4db.com.ar',
+      'www.cabañahoffer.com.ar',
       'cabañahoffer.com.ar',
       'localhost',  // usualmente ya está
     ],

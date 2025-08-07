@@ -47,43 +47,31 @@ export interface StockSale {
 
 // In-memory data stores
 let orders: CustomerOrder[] = [
-  {
-    id: '1',
-    customerName: 'João Silva',
-    numberOfCells: 10,
-    deliveryDate: new Date('2024-02-15'),
-    larvaeTransferDate: new Date('2024-02-05'),
-    status: 'pending',
-    createdAt: new Date('2024-01-20')
-  },
-  {
-    id: '2',
-    customerName: 'Maria Santos',
-    numberOfCells: 5,
-    deliveryDate: new Date('2024-02-20'),
-    larvaeTransferDate: new Date('2024-02-10'),
-    status: 'pending',
-    createdAt: new Date('2024-01-25')
-  }
+
 ];
 
 let productions: ProductionRecord[] = [
-  {
-    id: '1',
-    transferDate: new Date('2024-02-05'),
-    larvaeTransferred: 15,
-    acceptedCells: 12,
-    acceptanceDate: new Date('2024-02-06'),
-    hivesUsed: ['Hive A', 'Hive B'],
-    cellsProduced: 12,
-    orderId: '1',
-    status: 'active',
-    notes: 'Good larvae quality, 80% acceptance rate',
-    createdAt: new Date('2024-02-05')
-  }
 ];
 
 let stockPackages: StockPackage[] = [];
+
+function toSnakeCase(obj: any): any {
+  const result: any = {};
+  for (const key in obj) {
+    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    result[snakeKey] = obj[key];
+  }
+  return result;
+}
+function toCamelCase(obj: any): any {
+  const result: any = {};
+  for (const key in obj) {
+    const camelKey = key.replace(/(_\w)/g, (match) => match[1].toUpperCase());
+    result[camelKey] = obj[key];
+  }
+  return result;
+}
+
 
 // Helper function to get auth headers with token from localStorage
 const getAuthHeaders = () => {
@@ -98,18 +86,18 @@ const getAuthHeaders = () => {
 // Helper function to check and update expired stock
 const updateExpiredStock = () => {
   const now = new Date();
-  
+
   stockPackages.forEach(pkg => {
     if (!pkg.isExpired && isAfter(now, pkg.expirationDate) && pkg.availableCells > 0) {
       pkg.isExpired = true;
       pkg.availableCells = 0;
-      
+
       // Update related production status
       const productionIndex = productions.findIndex(p => p.id === pkg.productionId);
       if (productionIndex !== -1) {
         productions[productionIndex].status = 'expired';
       }
-      
+
       console.log('Stock package expired:', pkg);
     }
   });
@@ -121,13 +109,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 const checkProductionSoldStatus = (productionId: string) => {
   const production = productions.find(p => p.id === productionId);
   const stockPackage = stockPackages.find(s => s.productionId === productionId);
-  
+
   if (production && stockPackage) {
     const relatedOrder = orders.find(o => o.id === production.orderId);
     const orderCells = relatedOrder ? relatedOrder.numberOfCells : 0;
     const totalSold = stockPackage.soldCells;
     const totalProduced = production.cellsProduced;
-    
+
     // If all cells (order + extra) are sold, mark production as sold
     if (totalSold >= (totalProduced - orderCells) && stockPackage.availableCells === 0) {
       production.status = 'sold';
@@ -138,16 +126,19 @@ const checkProductionSoldStatus = (productionId: string) => {
 
 // Order management
 export const getOrders = async (): Promise<CustomerOrder[]> => {
-  const res = await fetch(`${API_BASE_URL}/orders`, {
+  const res = await fetch(`${API_BASE_URL}/order`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch orders');
   const data = await res.json();
   return data.map((order: any) => ({
-    ...order,
-    deliveryDate: new Date(order.deliveryDate),
-    larvaeTransferDate: new Date(order.larvaeTransferDate),
-    createdAt: new Date(order.createdAt),
+    id: order.id,
+    status: order.status,
+    customerName: order.customer_name,
+    numberOfCells: order.number_of_cells,
+    deliveryDate: new Date(order.delivery_date),
+    larvaeTransferDate: new Date(order.larvae_transfer_date),
+    createdAt: new Date(order.created_at),
   }));
 };
 
@@ -159,24 +150,41 @@ export const getOrderById = async (orderId: string): Promise<CustomerOrder | nul
   if (!res.ok) throw new Error('Failed to fetch order');
   const order = await res.json();
   return {
-    ...order,
-    deliveryDate: new Date(order.deliveryDate),
-    larvaeTransferDate: new Date(order.larvaeTransferDate),
-    createdAt: new Date(order.createdAt),
+    id: order.id,
+    status: order.status,
+    customerName: order.customer_name,
+    numberOfCells: order.number_of_cells,
+    deliveryDate: new Date(order.delivery_date),
+    larvaeTransferDate: new Date(order.larvae_transfer_date),
+    createdAt: new Date(order.created_at),
   };
 };
 
-export const addOrder = async (orderData: Omit<CustomerOrder, 'id' | 'larvaeTransferDate' | 'status' | 'createdAt'>): Promise<CustomerOrder> => {
-  const res = await fetch(`${API_BASE_URL}/orders/`, {  // agregué slash al final
+export const addOrder = async (orderData: Omit<CustomerOrder, 'id' | 'status' | 'createdAt'>): Promise<CustomerOrder> => {
+  console.log('deliveryDate raw:', orderData.deliveryDate);
+console.log('larvaeTransferDate raw:', orderData.larvaeTransferDate);
+
+  const payloadCamel = {
+    ...orderData,
+    deliveryDate: new Date(orderData.deliveryDate).toISOString().split('T')[0],
+    larvaeTransferDate: new Date(orderData.larvaeTransferDate).toISOString().split('T')[0],
+  };
+
+  console.log('Adding order:', payloadCamel);
+  const payload = toSnakeCase(payloadCamel);
+
+  const res = await fetch(`${API_BASE_URL}/order/`, {  // agregué slash al final
     method: 'POST',
     headers: {
       ...getAuthHeaders(),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(orderData),
+    body: JSON.stringify(payload),
   });
+
   if (!res.ok) throw new Error('Failed to add order');
   const newOrder = await res.json();
+  console.log(newOrder)
   return {
     ...newOrder,
     deliveryDate: new Date(newOrder.deliveryDate),
