@@ -116,7 +116,7 @@ const updateExpiredStock = () => {
   });
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://panelapi.xn--cabaahoffer-4db.com.ar/api';
 
 // Helper function to check if production should be marked as sold
 const checkProductionSoldStatus = (productionId) => {
